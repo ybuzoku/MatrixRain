@@ -23,6 +23,6 @@ Important Notice:
 - If you experience a bug or find a spelling mistake in this program or the screensaver, feel free to raise an issue in the respective repository. I will address them in due course! :)
 
 Contact Info:
-- If you wish to contact me directly about any issues with my programs or about queries about assembly programming, feel free to contact me via reddit on u/ylli122 or directly by email at ybuzoku@hotmail.co.uk
+- If you wish to contact me directly about any issues with my programs or about queries about assembly programming, feel free to contact me via reddit at u/ylli122 or directly by email at ybuzoku@hotmail.co.uk
   
 This application was written and tested on an IBM PC/XT under IBM DOS 3.3 and assembled with MASM 4.0.
