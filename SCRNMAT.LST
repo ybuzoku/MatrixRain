@@ -1,0 +1,292 @@
+Microsoft (R) Macro Assembler  Version 4.00                 11/25/21 11:45:31
+                                                            Page     1-1
+                                                            
+
+                                ;A Matrix rain application. Assembles as a .COM
+				 file. 
+                                ;Author: Yll Buzoku 
+                                ;Date of initial write: 23/08/21 
+                                 
+ 0000                           CODE 	SEGMENT 
+                                ASSUME 	CS:CODE, DS:CODE, ES:CODE, SS:CODE 
+ 0100                           ORG 	100H 
+                                 
+ 0100                           INIT	PROC	NEAR 
+                                ;Saves current screen then blanks the screen, a
+				nd starts scrolling ascii 
+                                ;chars down the screen. Does not depend on hard
+				ware techniques, paging or  
+                                ;hw scrolling. Use BIOS INT 10h to slow down sc
+				reen drawing.  
+                                 
+                                ;First manually set segregs 
+ 0100  0E                       	push cs 
+ 0101  58                       	pop ax 
+ 0102  8E D8                    	mov ds, ax 
+ 0104  8E C0                    	mov es, ax 
+ 0106  8E D0                    	mov ss, ax 
+ 0108  BC 121F R                	mov sp, OFFSET stkend 	;Bottom of the stk spac
+				e 
+                                ;Now detect video mode 
+ 010B  B4 0F                    	mov ah, 0Fh 
+ 010D  CD 10                    	int 10h 
+                                ;Returns al=Vid mode, ah=#of cols, bh=active pa
+				ge 
+ 010F  A2 0212 R                	mov byte ptr [mode], al 
+ 0112  88 26 0213 R             	mov byte ptr [cols], ah 
+ 0116  88 3E 0216 R             	mov byte ptr [page], bh 
+ 011A  C7 06 0214 R B800        	mov word ptr [regseg], 0b800h	;Assume colour c
+				ard 
+ 0120  3C 07                    	cmp al, 07h	;Are we a BW card, currently activ
+				e? 
+ 0122  75 06                    	jne i1 
+ 0124  81 2E 0214 R 0800        	sub word ptr [regseg], 800h	;Move it back to b
+				w space 
+ 012A                           i1: 
+                                	;First we create a first seed 
+ 012A  32 E4                    	xor ah, ah 
+ 012C  CD 1A                    	int 1Ah 
+ 012E  89 16 0217 R             	mov word ptr [seed], dx		;Get ticks into seed 
+				var 
+                                 
+                                	;Now we save the current screen and clear it i
+				n prep for screensaver 
+                                	;Temporarily, one textmode regen size 
+                                	;Calculate size needed, and realloc 
+                                 
+ 0132  B8 1220 R                	mov ax, OFFSET stkend + 1 
+ 0135  B1 04                    	mov cl, 4 
+Microsoft (R) Macro Assembler  Version 4.00                 11/25/21 11:45:31
+                                                            Page     1-2
+                                                            
+
+ 0137  D3 E8                    	shr ax, cl	;Turn ax into number of paragraphs 
+ 0139  8B D8                    	mov bx, ax	;Move paragraphs into bx 
+ 013B  43                       	inc bx		;Add 1 to be safe 
+ 013C  8C C8                    	mov ax, cs	;get code segment 
+ 013E  8E C0                    	mov es, ax	;put code segment into es 
+ 0140  B4 4A                    	mov ah, 4Ah	;Realloc 
+ 0142  CD 21                    	int 21h 
+                                 
+ 0144  73 19                    	jnc i2	;Jump if passed 
+ 0146  BA 0150 R                	mov dx, OFFSET fmsg 
+ 0149  B4 09                    	mov ah, 09h 
+ 014B  CD 21                    	int 21h	;Print string, ds in correct segment 
+ 014D  EB 5F 90                 	jmp iexit 
+ 0150  4D 61 6C 6F 63 20 65     fmsg:	db "Maloc error!",0Ah,0Dh,"$"	 
+       72 72 6F 72 21 0A 0D     
+       24                       
+ 015F                           i2: 
+ 015F  32 FF                    	xor bh, bh		;0 page 
+ 0161  B4 03                    	mov ah, 03h		;read cursor pos 
+ 0163  CD 10                    	int 10h 
+ 0165  89 16 0219 R             	mov word ptr [curs], dx	;Save cursor pos 
+                                 
+ 0169  A1 0214 R                	mov ax, word ptr [regseg]	;Get actual segment 
+				 
+ 016C  1E                       	push ds 
+ 016D  8E D8                    	mov ds, ax			;Set ds to point to bios regen 
+ 016F  33 F6                    	xor si, si 
+ 0171  BF 021B R                	mov di, OFFSET regen		;es points to current co
+				de segment 
+ 0174  B9 07D0                  	mov cx, 2000			;2000 words to be transferred 
+ 0177  F3/ A5                   	rep movsw 
+ 0179  1F                       	pop ds				;Get original ds back 
+                                ;Buffers copied, time for some fun! 
+                                 
+ 017A                           iloop:		;Main loop 
+                                ;Get a random column number to scroll down, a r
+				andom number of rows to scroll  
+                                ;that column down by 
+ 017A  8A 1E 0213 R             	mov bl, byte ptr [cols]	;Get columns into bl 
+ 017E  E8 01B3 R                	call rndgen 
+ 0181  8A C3                    	mov al, bl	;Move the random column into al 
+                                			;Get a random column function 
+ 0183  B3 FF                    	mov bl, 0FFh	;Sub function options 
+ 0185  E8 01B3 R                	call rndgen 
+ 0188  8A E3                    	mov ah, bl	;Move random column function into a
+				h 
+ 018A  E8 01D1 R                	call col 
+ 018D  B4 01                    	mov ah, 01 
+ 018F  CD 16                    	int 16h 
+ 0191  74 E7                    	jz iloop 
+                                ;Exit below here. Return regen to regseg and de
+				alloc 
+ 0193  A1 0214 R                	mov ax, word ptr [regseg] 
+ 0196  8E C0                    	mov es, ax 
+Microsoft (R) Macro Assembler  Version 4.00                 11/25/21 11:45:31
+                                                            Page     1-3
+                                                            
+
+ 0198  0E                       	push cs 
+ 0199  1F                       	pop ds			;Ensure ds in code segment 
+ 019A  BE 021B R                	mov si, OFFSET regen 
+ 019D  33 FF                    	xor di, di 
+ 019F  B9 07D0                  	mov cx, 2000 
+ 01A2  F3/ A5                   	rep movsw 
+ 01A4  8B 16 0219 R             	mov dx, word ptr [curs]	;Get original cursor p
+				osition back 
+ 01A8  32 FF                    	xor bh, bh		;0 page 
+ 01AA  B4 02                    	mov ah, 02h		;set cursor 
+ 01AC  CD 10                    	int 10h 
+ 01AE                           iexit: 
+ 01AE  B8 4C00                  	mov ax, 4c00h	;DOS exit 
+ 01B1  CD 21                    	int 21h 
+                                INIT	ENDP 
+                                 
+ 01B3                           RNDGEN	PROC	NEAR 
+                                ;Generates a random 8 bit "ASCII" value to put 
+				in the column. 
+                                ;Input: bl = Modulo value (max allowed value pl
+				us 1) 
+                                ;Ret:	bl = Random value 
+ 01B3  50                       	push ax 
+ 01B4  51                       	push cx 
+ 01B5  52                       	push dx 
+ 01B6  B8 6255                  	mov ax, 25173	;Random multiplier 
+ 01B9  F7 26 0217 R             	mul word ptr [seed]	;Multiply to seed 
+ 01BD  05 3619                  	add ax, 13849 
+ 01C0  A3 0217 R                	mov word ptr [seed], ax 
+                                ;ax now has new random value 
+ 01C3  8A CB                    	mov cl, bl	;Get max number in cl 
+ 01C5  32 ED                    	xor ch, ch 
+ 01C7  33 D2                    	xor dx, dx	;Clear upper word for division for 
+				no overflow? 
+ 01C9  F7 F1                    	div cx		;Divide ax by cl 
+ 01CB  8A DA                    	mov bl, dl	;move remainder into bl 
+                                 
+ 01CD  5A                       	pop dx 
+ 01CE  59                       	pop cx 
+ 01CF  58                       	pop ax 
+ 01D0  C3                       	ret 
+                                RNDGEN	ENDP 
+ 01D1                           COL	PROC	NEAR 
+                                ;----------------------------------------------
+				------- 
+                                ; Takes column to scroll down, and scrolls it d
+				own.  : 
+                                ; Might generate a new char or even clear colum
+				n.    : 
+                                ; Input: al=Column number (0-49), ah=Bit 7 	   
+				  : 
+                                ;	ah(7) clear = Scroll column		     : 
+                                ;	ah(7) set   = Add new char + scroll	     : 
+                                ; Output: Nothing, ax destroyed.		     : 
+Microsoft (R) Macro Assembler  Version 4.00                 11/25/21 11:45:31
+                                                            Page     1-4
+                                                            
+
+                                ;----------------------------------------------
+				------- 
+ 01D1  52                       	push dx 
+ 01D2  51                       	push cx 
+ 01D3  53                       	push bx 
+ 01D4  56                       	push si	 
+                                	 
+ 01D5  32 ED                    	xor ch, ch	;Upper row 
+ 01D7  B6 18                    	mov dh, 24	;Lower row 
+ 01D9  8A C8                    	mov cl, al	;Column to scroll in cl 
+ 01DB  8A D0                    	mov dl, al	;Column to scroll in dl 
+ 01DD  8B F0                    	mov si, ax	;Save col number in si 
+ 01DF  BB 0700                  	mov bx, 0700h	;Usual char attrib in bh 
+ 01E2  F6 C4 80                 	test ah, 80h 
+ 01E5  74 21                    	jz colsub0 
+                                 
+ 01E7  B8 0701                  	mov ax, 0701h	;Scroll col down 1 
+ 01EA  CD 10                    	int 10h 
+                                	;Now insert a new random char at top 
+ 01EC  8B D6                    	mov dx, si	;Return col number into dl 
+ 01EE  32 F6                    	xor dh, dh	;Row 0 
+ 01F0  32 FF                    	xor bh, bh	;Page 0 
+ 01F2  B4 02                    	mov ah, 02h	;Set cursor pos 
+ 01F4  CD 10                    	int 10h 
+ 01F6  B3 FF                    	mov bl, 0FFh	;Max ASCII char value 
+ 01F8  E8 01B3 R                	call rndgen	;Get the char 
+ 01FB  B9 0001                  	mov cx, 1	;1 char to print 
+ 01FE  8A C3                    	mov al, bl	;Move char code into al 
+ 0200  B7 00                    	mov bh, 00h	;Page number 
+ 0202  B4 0A                    	mov ah, 0Ah	;Write char function 
+ 0204  CD 10                    	int 10h 
+ 0206  EB 05                    	jmp short colexit 
+ 0208                           colsub0: 
+ 0208  B8 0701                  	mov ax, 0701h	;Scroll col down 1 
+ 020B  CD 10                    	int 10h 
+ 020D                           colexit: 
+ 020D  5E                       	pop si 
+ 020E  5B                       	pop bx 
+ 020F  59                       	pop cx 
+ 0210  5A                       	pop dx 
+ 0211  C3                       	ret 
+                                COL	ENDP 
+ 0212  ??                       mode:	db	?	;Screenmode value 
+ 0213  ??                       cols:	db	?	;Number of columns 
+ 0214  ????                     regseg:	dw	?	;Either b000 or b800 (regen segmen
+				t) 
+ 0216  ??                       page:	db	?	;Current page number 
+ 0217  ????                     seed:	dw	?	;Seed 
+ 0219  ????                     curs:	dw	?	;Original cursor 
+ 021B  0FA0[                    regen:	db	4000 	dup(?)	;Regen space 
+            ??                  
+                         ]      
+                                
+ 11BB  0064[                    stk:	db	100	dup(?)	;100 bytes stack space, over
+Microsoft (R) Macro Assembler  Version 4.00                 11/25/21 11:45:31
+                                                            Page     1-5
+                                                            
+
+				kill but safe 
+            ??                  
+                         ]      
+                                
+ 121F                           stkend	LABEL	WORD	 
+ 121F                           CODE	ENDS 
+                                	END	INIT 
+Microsoft (R) Macro Assembler  Version 4.00                 11/25/21 11:45:31
+                                                            Symbols-1
+                                                             
+
+Segments and Groups:
+
+                N a m e         	Size	Align	Combine Class
+
+CODE . . . . . . . . . . . . . .  	121F	PARA	NONE	
+
+Symbols:            
+
+                N a m e         	Type	Value	Attr         
+
+COL  . . . . . . . . . . . . . .  	N PROC	01D1	CODE	Length = 0041
+COLEXIT  . . . . . . . . . . . .  	L NEAR	020D	CODE
+COLS . . . . . . . . . . . . . .  	L NEAR	0213	CODE
+COLSUB0  . . . . . . . . . . . .  	L NEAR	0208	CODE
+CURS . . . . . . . . . . . . . .  	L NEAR	0219	CODE
+
+FMSG . . . . . . . . . . . . . .  	L NEAR	0150	CODE
+
+I1 . . . . . . . . . . . . . . .  	L NEAR	012A	CODE
+I2 . . . . . . . . . . . . . . .  	L NEAR	015F	CODE
+IEXIT  . . . . . . . . . . . . .  	L NEAR	01AE	CODE
+ILOOP  . . . . . . . . . . . . .  	L NEAR	017A	CODE
+INIT . . . . . . . . . . . . . .  	N PROC	0100	CODE	Length = 00B3
+
+MODE . . . . . . . . . . . . . .  	L NEAR	0212	CODE
+
+PAGE . . . . . . . . . . . . . .  	L NEAR	0216	CODE
+
+REGEN  . . . . . . . . . . . . .  	L NEAR	021B	CODE
+REGSEG . . . . . . . . . . . . .  	L NEAR	0214	CODE
+RNDGEN . . . . . . . . . . . . .  	N PROC	01B3	CODE	Length = 001E
+
+SEED . . . . . . . . . . . . . .  	L NEAR	0217	CODE
+STK  . . . . . . . . . . . . . .  	L NEAR	11BB	CODE
+STKEND . . . . . . . . . . . . .  	L WORD 	121F	CODE
+
+
+    188 Source  Lines
+    188 Total   Lines
+     41 Symbols
+
+  49290 Bytes symbol space free
+
+      0 Warning Errors
+      0 Severe  Errors
